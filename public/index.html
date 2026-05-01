@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<!--
+  index.html — Desktop cinematic view for "In Between the Stills"
+
+  Script load order:
+    1. socket.io.js   — relay transport
+    2. p5.js          — canvas runtime
+    3. colorgrade.js  — ColorGrade class + PRESETS
+    4. subtitle.js    — SubtitleSystem
+    5. particles.js   — ParticleSystem (audio-reactive backdrop)
+    6. gallery.js     — Gallery (auto-stills + video recorder)
+    7. sketch.js      — main p5 sketch
+-->
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>In Between the Stills</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 100%; height: 100%;
+      overflow: hidden;
+      background: #000;
+      cursor: none;
+    }
+    canvas { display: block; }
+  </style>
+</head>
+<body>
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.3/p5.min.js"
+          crossorigin="anonymous"></script>
+  <script src="colorgrade.js"></script>
+  <script src="subtitle.js"></script>
+  <script src="particles.js"></script>
+  <script src="gallery.js"></script>
+  <script src="sketch.js"></script>
+</body>
+</html>

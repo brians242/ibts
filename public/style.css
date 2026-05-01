@@ -1,0 +1,21 @@
+/*
+  style.css — Shared baseline styles for "In Between the Stills"
+  (index.html inlines its own critical styles; this file is available for future use)
+*/
+
+/* System-font monospace stack for any text outside the canvas */
+body {
+  font-family: 'Courier New', Courier, monospace;
+  background: #000;
+  color: #fff;
+}
+
+/* Prevent tap highlight flicker on mobile interactive elements */
+button, select, a {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Smooth transitions when toggling visibility */
+[data-fade] {
+  transition: opacity 0.3s ease;
+}
