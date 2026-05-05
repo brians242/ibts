@@ -15,6 +15,7 @@ class SubtitleSystem {
     this.holdDuration    = 6000
     this.fadeOutDuration = 800
     this.waitDuration    = 2500
+    this.holdMultiplier  = 1.0
 
     this._lastIdx = -1
     this._scheduleNext()
@@ -30,7 +31,7 @@ class SubtitleSystem {
         this.alpha = Math.min(1, this.timer / this.fadeInDuration)
         if (this.timer >= this.fadeInDuration) {
           this.alpha = 1; this.timer = 0; this.state = 'hold'
-          this.holdDuration = 5500 + Math.random() * 4500
+          this.holdDuration = (5500 + Math.random() * 4500) * this.holdMultiplier
         }
         break
       case 'hold':
@@ -57,10 +58,10 @@ class SubtitleSystem {
 
     push()
     noStroke()
-    textFont('Georgia, "Times New Roman", serif')
-    textSize(22)
+    textFont('monospace')
+    textSize(18)
     textAlign(CENTER, CENTER)
-    textStyle(ITALIC)
+    textStyle(NORMAL)
 
     // Soft shadow for legibility over any image
     drawingContext.save()

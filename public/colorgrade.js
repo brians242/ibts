@@ -165,6 +165,11 @@ class ColorGrade {
     this.params     = { ...PRESETS[name] }
   }
 
+  drawStillOverlay(x, y, w, h) {
+    this._drawVignette(x, y, w, h, true)
+    this._drawGrain(x, y, w, h, true)
+  }
+
   _cssFilter() {
     const p = this.params
     return [

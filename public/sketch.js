@@ -26,9 +26,12 @@ let grade
 let subtitles
 let particles
 let gallery
+let asciiLayer
+let markov
 
 // ── App state ──────────────────────────────────────────────────────────────────
 let swapped     = false   // 1/2 key: swap base vs overlay
+let layout      = 'overlap'  // 'overlap' | 'sidebyside'
 let showConfig  = false
 let configPanel = null
 let videoDevices = []
@@ -53,6 +56,10 @@ let _scanOffset = 0
 
 // ── Grade cycling flash ────────────────────────────────────────────────────────
 let _gradeFlash = 0   // frames to show grade name
+
+// ── Still mode ─────────────────────────────────────────────────────────────────
+let stillMode   = false
+let _stillFrame = null
 
 // ── Branching paths ────────────────────────────────────────────────────────────
 const BRANCHING_PATHS = [
@@ -135,6 +142,12 @@ function setup() {
   particles = new ParticleSystem()
   particles.init(260)
 
+  asciiLayer = new AsciiLayer()
+  asciiLayer.init(width, CONTENT_H)
+
+  markov = new MarkovConstellation()
+  markov.init(width, CONTENT_H)
+
   gallery = new Gallery()
   window._galleryRecToggle = () => {
     gallery.recording ? gallery.stopRec() : gallery.startRec(document.querySelector('canvas'))
@@ -180,6 +193,17 @@ function draw() {
 
   // ── 4. Photobooth logic (capture before overlays) ─────────────────────────
   _tickPhotobooth()
+
+  // ── 4a. ASCII character texture — mapped to live camera brightness ─────────
+  // Skip during photobooth flash/composite (live camera isn't primary then)
+  if (!pb.phase || pb.phase === 'countdown') {
+    const _asciiSrc = swapped ? phoneImg.elt : laptopVideo.elt
+    asciiLayer.draw(_asciiSrc, 0, CONTENT_Y, width, CONTENT_H)
+  }
+
+  // ── 4b. Markov state constellation — subliminal data layer ─────────────────
+  markov.update(_presMotion)
+  markov.draw(0, CONTENT_Y, width, CONTENT_H)
 
   // ── 5. Scanlines + glitch ─────────────────────────────────────────────────
   _drawScanlines()
@@ -230,6 +254,14 @@ function draw() {
 // FEEDS  — full-canvas base + phone overlay
 // ─────────────────────────────────────────────────────────────────────────────
 function _drawFeeds() {
+  if (stillMode && _stillFrame) {
+    push(); image(_stillFrame, 0, CONTENT_Y, width, CONTENT_H); pop()
+    grade.drawStillOverlay(0, CONTENT_Y, width, CONTENT_H)
+    return
+  }
+
+  if (layout === 'sidebyside') { _drawSideBySide(); return }
+
   const baseSrc     = swapped ? phoneImg.elt     : laptopVideo.elt
   const overlaySrc  = swapped ? laptopVideo.elt  : phoneImg.elt
   const overlayReady = swapped ? true            : phoneHasFrame
@@ -268,6 +300,27 @@ function _drawOverlay(src) {
   // Slight horizontal offset creates natural parallax from the two camera positions
   ctx.drawImage(src, sx, sy, sw, sh, 18, CONTENT_Y, width, CONTENT_H)
   ctx.restore()
+}
+
+// Side-by-side: two equal panels with a thin black divider
+function _drawSideBySide() {
+  const mid    = Math.floor(width / 2)
+  const slotW  = mid - 1
+
+  const leftSrc    = swapped ? phoneImg.elt    : laptopVideo.elt
+  const rightSrc   = swapped ? laptopVideo.elt : phoneImg.elt
+  const rightReady = swapped ? true            : phoneHasFrame
+
+  grade.drawFeed(leftSrc, 0, CONTENT_Y, slotW, CONTENT_H)
+
+  fill(0); noStroke()
+  rect(slotW, CONTENT_Y, 2, CONTENT_H)
+
+  if (rightReady) {
+    grade.drawFeed(rightSrc, mid + 1, CONTENT_Y, slotW, CONTENT_H)
+  } else {
+    _placeholder(mid + 1, CONTENT_Y, slotW, CONTENT_H)
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -500,13 +553,18 @@ function _drawHUD() {
     ctx.restore()
   }
 
-  // Mode indicator (top-left)
+  // Mode indicator (top-left / center)
   ctx.save()
   ctx.font = '9px monospace'
-  ctx.textAlign = 'left'
   if (_rfMode) {
+    ctx.textAlign = 'left'
     ctx.fillStyle = `rgba(255,75,75,${0.6 + 0.4 * Math.sin(frameCount * 0.09)})`
     ctx.fillText(`RAPIDFIRE  ·  ROUND ${_rf.round}`, 32, cy + 3.5)
+  } else if (stillMode) {
+    ctx.textAlign = 'center'
+    const pulse = 0.6 + 0.4 * Math.sin(frameCount * 0.04)
+    ctx.fillStyle = `rgba(255,228,45,${pulse})`
+    ctx.fillText('STILL', width * 0.5, cy + 3.5)
   }
   ctx.restore()
 
@@ -543,6 +601,10 @@ function keyPressed() {
       _triggerMoment()
       return false
 
+    case 'S':
+      _toggleStillMode()
+      break
+
     case 'F':
       if (_rfMode) _stopRapidfire()
       else _startRapidfire()
@@ -553,6 +615,11 @@ function keyPressed() {
       break
 
     case 'G':
+      grade.cyclePreset()
+      _gradeFlash = 55
+      break
+
+    case '`':
       gallery.toggle()
       break
 
@@ -608,6 +675,13 @@ function windowResized() {
   _computeLayout()
   grade.resizeGrain(width, height)
   particles.init(260)
+  asciiLayer.resize(width, CONTENT_H)
+  markov.init(width, CONTENT_H)
+  if (stillMode) {
+    stillMode = false
+    if (_stillFrame) { _stillFrame.remove(); _stillFrame = null }
+    subtitles.holdMultiplier = 1.0
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -655,14 +729,20 @@ function _buildConfigPanel() {
         <option value="swapped">phone base · laptop overlay</option>
       </select>
     </label><br>
+    <label>Layout &nbsp;
+      <select id="cfg-layout" style="${_sel()}">
+        <option value="overlap">overlap (double exposure)</option>
+        <option value="sidebyside">side by side</option>
+      </select>
+    </label><br>
     <label>Laptop camera &nbsp;
       <select id="cfg-device" style="${_sel()}"><option>default</option></select>
     </label>
     <hr style="border-color:#111;margin:12px 0 8px">
     <div style="color:#333;font-size:10px;line-height:1.9">
-      Click / Space · moment &nbsp; F · rapidfire<br>
-      G · gallery &nbsp; R · manual record &nbsp; C · this panel<br>
-      P · photobooth &nbsp; 1/2 · swap
+      Click / Space · moment &nbsp; S · still mode<br>
+      G · grade &nbsp; R · record &nbsp; C · this panel<br>
+      P · photobooth &nbsp; \` · gallery &nbsp; 1/2 · swap
     </div>
   `
   document.body.appendChild(configPanel)
@@ -677,6 +757,10 @@ function _buildConfigPanel() {
 
   document.getElementById('cfg-swap').addEventListener('change', e => {
     swapped = e.target.value === 'swapped'
+  })
+
+  document.getElementById('cfg-layout').addEventListener('change', e => {
+    layout = e.target.value
   })
 
   window._cfgDeviceSelect = document.getElementById('cfg-device')
@@ -704,6 +788,21 @@ function _populateDeviceSelector() {
     opt.textContent = d.label || `Camera ${i + 1}`
     sel.appendChild(opt)
   })
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// STILL MODE — freeze frame with deepened grain + vignette; longer subtitle hold
+// ─────────────────────────────────────────────────────────────────────────────
+function _toggleStillMode() {
+  stillMode = !stillMode
+  if (stillMode) {
+    _stillFrame = get(0, CONTENT_Y, width, CONTENT_H)
+    subtitles.holdMultiplier = 2.5
+    if (subtitles.state === 'hold') subtitles.timer = 0
+  } else {
+    if (_stillFrame) { _stillFrame.remove(); _stillFrame = null }
+    subtitles.holdMultiplier = 1.0
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
