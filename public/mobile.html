@@ -93,8 +93,8 @@
       text-align: right;
     }
 
-    /* Flip camera button */
-    #flip-btn {
+    /* Flip / swap buttons */
+    #flip-btn, #swap-btn {
       background: #222;
       color: #ccc;
       border: 1px solid #333;
@@ -107,7 +107,8 @@
       -webkit-tap-highlight-color: transparent;
       transition: background 0.15s, color 0.15s;
     }
-    #flip-btn:active { background: #333; color: #fff; }
+    #flip-btn:active, #swap-btn:active { background: #333; color: #fff; }
+    #swap-btn.primary { border-color: #4ade80; color: #4ade80; }
 
     /* Error / permission message */
     #error-msg {
@@ -137,6 +138,7 @@
     <div id="status-dot" class="connecting"></div>
     <span id="status-text">connecting…</span>
     <span id="fps-counter">— fps</span>
+    <button id="swap-btn">⇄ swap</button>
     <button id="flip-btn">⟳ flip</button>
   </div>
 
@@ -144,12 +146,14 @@
   <script src="/socket.io/socket.io.js"></script>
   <script>
     // ── DOM refs ──────────────────────────────────────────────────────────
-    const preview    = document.getElementById('preview')
-    const statusDot  = document.getElementById('status-dot')
-    const statusText = document.getElementById('status-text')
-    const fpsEl      = document.getElementById('fps-counter')
-    const flipBtn    = document.getElementById('flip-btn')
-    const errorMsg   = document.getElementById('error-msg')
+    const preview      = document.getElementById('preview')
+    const statusDot    = document.getElementById('status-dot')
+    const statusText   = document.getElementById('status-text')
+    const fpsEl        = document.getElementById('fps-counter')
+    const flipBtn      = document.getElementById('flip-btn')
+    const swapBtn      = document.getElementById('swap-btn')
+    const previewLabel = document.getElementById('preview-label')
+    const errorMsg     = document.getElementById('error-msg')
 
     // Off-screen canvas used to convert video frame → JPEG dataURL
     const captureCanvas = document.createElement('canvas')
@@ -160,6 +164,7 @@
     let facingMode    = localStorage.getItem('facingMode') || 'environment'
     let currentStream = null   // MediaStream reference (for stopping tracks)
     let sendInterval  = null   // setInterval handle for the frame relay loop
+    let isPrimary     = false  // whether phone is currently the base/primary camera
 
     // FPS counter bookkeeping
     let framesSent   = 0
@@ -256,6 +261,15 @@
       localStorage.setItem('facingMode', facingMode)
       flipBtn.textContent = facingMode === 'environment' ? '⟳ flip' : '⟲ flip'
       startCamera(facingMode)
+    })
+
+    // ── Swap button — toggle phone as primary vs secondary camera ─────────
+    swapBtn.addEventListener('click', () => {
+      isPrimary = !isPrimary
+      socket.emit('phone-swap')
+      swapBtn.classList.toggle('primary', isPrimary)
+      swapBtn.textContent = isPrimary ? '★ primary' : '⇄ swap'
+      previewLabel.textContent = isPrimary ? 'camera · primary' : 'camera'
     })
 
     // ── Init ──────────────────────────────────────────────────────────────

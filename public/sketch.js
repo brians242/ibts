@@ -26,7 +26,7 @@ let grade
 let subtitles
 let particles
 let gallery
-let asciiLayer
+let landmarkOverlay
 let markov
 
 // ── App state ──────────────────────────────────────────────────────────────────
@@ -129,6 +129,7 @@ function setup() {
   })
   socket.on('phone-connected',    () => { phoneConnected = true  })
   socket.on('phone-disconnected', () => { phoneConnected = false; phoneHasFrame = false })
+  socket.on('phone-swap',         () => { swapped = !swapped })
 
   grade     = new ColorGrade('moodforlove')
   grade.initGrain(width, height)
@@ -142,8 +143,14 @@ function setup() {
   particles = new ParticleSystem()
   particles.init(260)
 
-  asciiLayer = new AsciiLayer()
-  asciiLayer.init(width, CONTENT_H)
+  landmarkOverlay = new LandmarkOverlay()
+  landmarkOverlay.init(laptopVideo.elt)
+  landmarkOverlay.onSnap = () => {
+    if (!pb.phase && !_rfMode && !gallery.visible) _startPhotobooth()
+  }
+  landmarkOverlay.onFist = () => {
+    if (!showConfig) gallery.toggle()
+  }
 
   markov = new MarkovConstellation()
   markov.init(width, CONTENT_H)
@@ -194,15 +201,15 @@ function draw() {
   // ── 4. Photobooth logic (capture before overlays) ─────────────────────────
   _tickPhotobooth()
 
-  // ── 4a. ASCII character texture — mapped to live camera brightness ─────────
-  // Skip during photobooth flash/composite (live camera isn't primary then)
+  // ── 4a. MediaPipe hand landmark → squiggle hull overlay ───────────────────
+  landmarkOverlay.tick()
   if (!pb.phase || pb.phase === 'countdown') {
-    const _asciiSrc = swapped ? phoneImg.elt : laptopVideo.elt
-    asciiLayer.draw(_asciiSrc, 0, CONTENT_Y, width, CONTENT_H)
+    landmarkOverlay.draw(laptopVideo.elt, 0, CONTENT_Y, width, CONTENT_H)
   }
 
   // ── 4b. Markov state constellation — subliminal data layer ─────────────────
-  markov.update(_presMotion)
+  markov.update(_presMotion, landmarkOverlay.velocity)
+  landmarkOverlay.asciiShift = markov.getAsciiShift()
   markov.draw(0, CONTENT_Y, width, CONTENT_H)
 
   // ── 5. Scanlines + glitch ─────────────────────────────────────────────────
@@ -675,7 +682,6 @@ function windowResized() {
   _computeLayout()
   grade.resizeGrain(width, height)
   particles.init(260)
-  asciiLayer.resize(width, CONTENT_H)
   markov.init(width, CONTENT_H)
   if (stillMode) {
     stillMode = false

@@ -24,9 +24,10 @@ class MarkovConstellation {
     ]
   }
 
-  update(motionLevel) {
-    // Hard-assign observation to one state
-    const obs = motionLevel < 0.25 ? 0 : motionLevel < 0.65 ? 1 : 2
+  // handVelocity: 0–1 from LandmarkOverlay.velocity; blended with presence motion
+  update(motionLevel, handVelocity = 0) {
+    const effective = Math.max(motionLevel, handVelocity * 0.7)
+    const obs = effective < 0.25 ? 0 : effective < 0.65 ? 1 : 2
 
     // Slow exponential pull toward observed state — long memory
     const decay = 0.992
@@ -36,6 +37,12 @@ class MarkovConstellation {
     // Renormalize
     const sum = this._probs[0] + this._probs[1] + this._probs[2]
     for (let i = 0; i < 3; i++) this._probs[i] /= sum
+  }
+
+  // Returns a float biasing LandmarkOverlay's ASCII density.
+  // quiet→-2 (lighter chars), here→0, moving→+5 (denser chars).
+  getAsciiShift() {
+    return -2 * this._probs[0] + 0 * this._probs[1] + 5 * this._probs[2]
   }
 
   draw(x, y, w, h) {

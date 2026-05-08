@@ -17,9 +17,9 @@ class Gallery {
     this._buildDOM()
   }
 
-  // Call each frame; canvas is the raw HTMLCanvasElement
+  // Auto-still every 4 seconds; paused during active recording.
   tick(nowMs, canvas) {
-    if (nowMs - this.lastMs >= 1000) {
+    if (!this.recording && nowMs - this.lastMs >= 4000) {
       this._snap(canvas)
       this.lastMs = nowMs
     }
@@ -211,7 +211,7 @@ class Gallery {
     })
 
     const title = document.createElement('span')
-    title.textContent = 'STILLS'
+    title.textContent = 'PHOTOS'
     Object.assign(title.style, {
       color: '#fff', fontFamily: mono, fontSize: '11px', letterSpacing: '.2em',
     })
@@ -257,7 +257,7 @@ class Gallery {
       flexShrink: '0',
     })
     const vidLabel = document.createElement('div')
-    vidLabel.textContent = 'MOMENTS'
+    vidLabel.textContent = 'CLIPS'
     Object.assign(vidLabel.style, {
       color: '#333', fontFamily: mono, fontSize: '10px',
       letterSpacing: '.2em', marginBottom: '8px',

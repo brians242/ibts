@@ -1,12 +1,6 @@
 # In Between the Stills
 
-A Wong Kar-Wai-inspired dual-camera cinematic installation. Merges a laptop webcam and a phone camera into a single widescreen frame with real-time color grading, film grain, and cycling subtitle fragments.
-
----
-
-## What it does
-
-Two live camera feeds appear side-by-side in a letterboxed 16:9 canvas. A color grade (warm shadows, lifted blacks, vignette) is applied in real-time. Subtitle fragments — pulled from a curated pool of ambiguous mid-scene lines — fade in and out across the bottom bar. Pressing `S` freezes the frame into a "still," deepening the grain and vignette like a film photograph being printed.
+A Wong Kar-Wai-inspired dual-camera cinematic installation. Merges a laptop webcam and a phone camera into a single widescreen frame with real-time color grading, film grain, particle swarms, hand-landmark ASCII overlays, and cycling subtitle fragments.
 
 ---
 
@@ -103,17 +97,37 @@ It prints an `https://` URL you can open on the phone.
 
 ---
 
-## Keyboard controls
+## Controls
+
+### Keyboard
 
 | Key | Action |
 |-----|--------|
-| `S` | Toggle still / live mode |
+| `Space` | Trigger a moment — 2 stills + 5 s clip + branching path overlay |
+| `S` | Toggle still / live mode (freezes frame, deepens grain) |
+| `P` | Start photobooth 3-2-1 countdown → parallax composite |
+| `F` | Toggle rapidfire storyboard mode |
 | `G` | Cycle color grade preset |
-| `C` | Open config panel |
-| `F` | Toggle fullscreen |
-| `Space` | Skip to next subtitle |
-| `1` | Laptop left, phone right (default) |
-| `2` | Phone left, laptop right |
+| `R` | Start / stop video recording |
+| `` ` `` | Open / close gallery |
+| `C` | Open config panel (grade, camera select, layout) |
+| `1` | Laptop as base, phone as overlay (default) |
+| `2` | Phone as base, laptop as overlay |
+| `ESC` | Close gallery / exit rapidfire / cancel photobooth |
+
+### Hand gestures (laptop webcam)
+
+| Gesture | Action |
+|---------|--------|
+| Snap fingers | 3-2-1 countdown → trigger moment (stills + clip) |
+| Hold a fist for ~0.5 s | Open / close gallery |
+
+### Phone controls
+
+| Button | Action |
+|--------|--------|
+| ⟳ flip | Switch between front and rear camera |
+| ⇄ swap | Make the phone the primary base camera (laptop becomes overlay) |
 
 ---
 
@@ -121,27 +135,87 @@ It prints an `https://` URL you can open on the phone.
 
 | Preset | Mood |
 |--------|------|
-| `warmnight` | *In the Mood for Love* — warm shadows, saturated, lifted blacks |
-| `faded` | *Chungking Express* — milky highlights, low contrast, cool shift |
-| `overcast` | *2046* — desaturated, blue-grey shadows |
+| `moodforlove` | *In the Mood for Love* — crimson shadows, amber warmth, heavy vignette |
+| `chunking` | *Chungking Express* — milky highlights, low contrast, cool shift |
+| `2046` | *2046* — desaturated, blue-grey shadows |
+| `fallen` | *Fallen Angels* — high contrast, pushed greens, deep blacks |
 | `raw` | No grade — passthrough |
 
 ---
 
-## File overview
+## File structure
 
 ```
 ├── server.js               Express + Socket.io relay server
 ├── package.json
 ├── captions/
-│   └── fragments.json      Pool of 50 subtitle fragments
+│   └── fragments.json      Pool of subtitle fragments
 └── public/
-    ├── index.html          Desktop cinematic view
-    ├── mobile.html         Phone camera streamer
-    ├── sketch.js           p5.js canvas, layout, keyboard controls
-    ├── colorgrade.js       Color grade class and presets
-    ├── subtitle.js         Subtitle state machine
-    └── style.css           Baseline styles
+    ├── index.html          Desktop cinematic view (loads all scripts)
+    ├── mobile.html         Phone camera streamer + swap/flip controls
+    ├── style.css           Baseline styles
+    ├── sketch.js           p5.js main loop, layout, keyboard + gesture wiring
+    ├── colorgrade.js       ColorGrade class — LUT-style CSS filter grades + film grain
+    ├── subtitle.js         SubtitleSystem — fade-in/hold/fade-out state machine
+    ├── landmarkoverlay.js  MediaPipe Hands → per-cell ASCII Markov fill; snap/fist detection
+    ├── markov.js           Sparse Markov state constellation (quiet/present/moving)
+    ├── particles.js        Audio-reactive swarming particle backdrop
+    ├── gallery.js          Auto-capture stills, canvas video recorder, lightbox UI
+    └── ascii.js            Brightness-mapped ASCII texture layer over raw video
 ```
 
 No build step. All frontend dependencies load from CDN.
+
+---
+
+## How it works
+
+### Dual-camera architecture
+
+The desktop (`index.html`) opens the laptop webcam directly via `getUserMedia`. The phone (`mobile.html`) opens its own camera, encodes each frame as a compressed JPEG dataURL at ~15 fps, and streams it over a Socket.io WebSocket to the server (`server.js`), which relays it to any connected desktop. The desktop receives frames and paints them onto a hidden `<img>` element that feeds into the p5.js canvas.
+
+By default the laptop feed fills the full canvas as the base layer and the phone feed is blended on top at 42% opacity in `screen` blending mode, producing a double-exposure effect. Pressing `2` (or the phone's ⇄ swap button) inverts this — the phone becomes the base and the laptop becomes the ghost overlay.
+
+### Render pipeline
+
+Each frame `draw()` runs these layers in order:
+
+1. **Presence detection** — the laptop frame is sampled at 20×12 pixels to find a weighted centroid of motion, which becomes the particle attractor.
+2. **Particle swarm** — ~260 particles drift toward the detected presence point, drawn behind everything.
+3. **Camera feeds** — base feed drawn full-canvas with the active color grade; phone overlay screen-blended on top with a slight horizontal offset for natural parallax.
+4. **MediaPipe hand landmarks** — fingers and palm are covered with a live ASCII character grid (see below).
+5. **Markov constellation** — barely-visible probability scatter reacts to motion and hand state.
+6. **Post-process** — animated scanlines, occasional glitch slices.
+7. **Subtitles** — poetic fragments fade in over the lower third.
+8. **Letterbox bars** — thin black bars top and bottom; particle frequency spectrum drawn in the bottom bar.
+9. **HUD** — phone connection dot, recording dot, mode labels.
+10. **Countdown / flash overlays** — photobooth, rapidfire, snap-record countdowns drawn on top.
+11. **Branching path overlay** — after a moment is triggered, an italic parallel-timeline text fades in and out over the image.
+
+### Hand landmark ASCII fill (`landmarkoverlay.js`)
+
+MediaPipe Hands runs asynchronously on the laptop webcam feed. For each detected hand, a capsule-based hit test covers the palm and all five fingers (no forearm — the coverage stops at the wrist). Each 8×8 px grid cell inside that shape holds a Markov state: an integer index into a 21-character ASCII chain ordered light-to-dense (`·.,~-:;/\|!+x*oO0#@%`). Per frame, each cell drifts one step toward a target index derived from the local video brightness, with the speed of drift driven by hand motion velocity. The result is a shimmering ASCII skin that reads the texture of whatever is behind the hand.
+
+The same module watches for two gestures:
+- **Snap** — detected when the hand velocity spikes above 0.55 after being calm (< 0.15) for at least 500 ms of continuous visibility, preventing false triggers from a hand entering frame. Fires the snap-record countdown.
+- **Fist** — detected when `handOpen` (average fingertip-to-wrist distance, normalized) falls below 0.35 and stays there for 500 ms. Opens or closes the gallery. Resets with a 2.5 s cooldown.
+
+### Color grade + film grain (`colorgrade.js`)
+
+Grades are applied as CSS `filter` strings (brightness, contrast, saturate, hue-rotate, sepia) composed at draw time. Film grain is a pre-generated noise texture drawn over the content area each frame at low opacity, refreshed on resize. The grain texture updates slowly each frame using a noise offset so it feels organic rather than frozen.
+
+### Subtitle system (`subtitle.js`)
+
+Fragments are loaded from `captions/fragments.json`. The state machine cycles: **waiting** → **fade in** (800 ms) → **hold** (3–6 s, randomized) → **fade out** (600 ms) → **waiting**. Still mode doubles the hold duration. `forceNext()` skips immediately to the next fragment — called on every moment trigger so grade changes always coincide with a subtitle shift.
+
+### Gallery + recording (`gallery.js`)
+
+Auto-captures a still every 4 seconds while not recording. A moment trigger adds two manual stills (before and after the grade shift) and starts a 5-second video clip via `MediaRecorder` on the canvas stream. The gallery overlay shows stills in a scrollable grid and clips in a horizontal row; clips play on hover. A lightbox allows full-screen viewing and JPEG/WebM download.
+
+### Markov constellation (`markov.js`)
+
+Three hidden states — quiet, present, moving — update their transition probabilities from live presence-detection and hand velocity data. A sparse scatter of dots and probability labels is rendered at very low opacity in the content area, invisible at a glance but present on closer inspection. The constellation also exports an `asciiShift` value that biases the hand overlay toward lighter or denser characters depending on the current state.
+
+### Branching path overlays
+
+After each moment trigger, one of fifteen pre-written parallel-timeline sentences fades in over the upper-middle of the frame in italic serif type, holds for ~5.5 seconds, then fades out. The text describes an alternate version of the present moment — the same structural conceit as the film's parallel-life theme.

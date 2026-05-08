@@ -54,7 +54,7 @@ class SubtitleSystem {
 
     const a   = this.alpha
     const cx  = contentX + contentW * 0.5
-    const cy  = contentY + contentH * 0.72   // lower third
+    const cy  = contentY + contentH - 52   // just above the spectrum bar
 
     push()
     noStroke()
